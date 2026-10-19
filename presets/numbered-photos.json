@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "compound_extensions": true,
+  "rules": [
+    {
+      "enabled": true,
+      "target": "Name",
+      "kind": "Insert",
+      "options": {
+        "mode": "Replace entire name",
+        "text": "Photo"
+      }
+    },
+    {
+      "enabled": true,
+      "target": "Name",
+      "kind": "Numbering",
+      "options": {
+        "mode": "Suffix",
+        "start": 1,
+        "step": 1,
+        "digits": 3,
+        "separator": "_"
+      }
+    }
+  ]
+}

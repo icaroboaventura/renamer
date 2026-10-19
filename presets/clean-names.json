@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "compound_extensions": true,
+  "rules": [
+    {
+      "enabled": true,
+      "target": "Name",
+      "kind": "Regular expression",
+      "options": {
+        "pattern": "\\s*\\([^)]*\\)",
+        "replacement": ""
+      }
+    },
+    {
+      "enabled": true,
+      "target": "Name",
+      "kind": "Whitespace",
+      "options": {
+        "mode": "Collapse spaces"
+      }
+    },
+    {
+      "enabled": true,
+      "target": "Name",
+      "kind": "Whitespace",
+      "options": {
+        "mode": "Trim ends"
+      }
+    }
+  ]
+}

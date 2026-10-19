@@ -1,0 +1,173 @@
+{
+  "version": 1,
+  "targets": [
+    "Name",
+    "Extension",
+    "Full name"
+  ],
+  "operations": {
+    "Case": {
+      "modes": [
+        "lowercase",
+        "UPPERCASE",
+        "Title Case",
+        "Sentence case",
+        "Invert case"
+      ],
+      "options": [
+        "mode"
+      ]
+    },
+    "Word format": {
+      "modes": [
+        "snake_case",
+        "camelCase",
+        "PascalCase",
+        "SCREAMING_SNAKE_CASE",
+        "kebab-case",
+        "Train-Case",
+        "Separate words",
+        "Join words"
+      ],
+      "options": [
+        "mode",
+        "split_numbers"
+      ]
+    },
+    "Replace text": {
+      "modes": [],
+      "options": [
+        "first",
+        "ignore_case",
+        "pattern",
+        "replacement"
+      ]
+    },
+    "Regular expression": {
+      "modes": [],
+      "options": [
+        "first",
+        "ignore_case",
+        "pattern",
+        "replacement"
+      ]
+    },
+    "Remove": {
+      "modes": [
+        "Text",
+        "Characters at position",
+        "Digits",
+        "Punctuation",
+        "Accents"
+      ],
+      "options": [
+        "count",
+        "mode",
+        "position",
+        "text"
+      ]
+    },
+    "Whitespace": {
+      "modes": [
+        "Remove all spaces",
+        "Trim ends",
+        "Collapse spaces",
+        "Spaces to separator",
+        "Hyphens to spaces",
+        "Underscores to spaces"
+      ],
+      "options": [
+        "mode",
+        "separator"
+      ]
+    },
+    "Insert": {
+      "modes": [
+        "Prefix",
+        "Suffix",
+        "At position",
+        "Replace entire name"
+      ],
+      "options": [
+        "mode",
+        "position",
+        "text"
+      ]
+    },
+    "Numbering": {
+      "modes": [
+        "Suffix",
+        "Prefix",
+        "At position",
+        "Replace entire name"
+      ],
+      "options": [
+        "digits",
+        "mode",
+        "per_folder",
+        "position",
+        "separator",
+        "start",
+        "step"
+      ]
+    }
+  },
+  "regex_examples": [
+    {
+      "title": "Remove leading numbers",
+      "pattern": "^\\d+[\\s._-]*",
+      "replacement": "",
+      "input": "001 - Summer.jpg",
+      "output": "Summer.jpg"
+    },
+    {
+      "title": "Normalize spaces",
+      "pattern": "\\s+",
+      "replacement": " ",
+      "input": "My   summer   photo",
+      "output": "My summer photo"
+    },
+    {
+      "title": "Remove parentheses",
+      "pattern": "\\s*\\([^)]*\\)",
+      "replacement": "",
+      "input": "Photo (copy)",
+      "output": "Photo"
+    },
+    {
+      "title": "Replace separators",
+      "pattern": "[_\\s-]+",
+      "replacement": "-",
+      "input": "my_photo name",
+      "output": "my-photo-name"
+    },
+    {
+      "title": "Swap captured parts",
+      "pattern": "^(.+),\\s*(.+)$",
+      "replacement": "\\g<2> \\g<1>",
+      "input": "Smith, Jane",
+      "output": "Jane Smith"
+    },
+    {
+      "title": "Reformat date",
+      "pattern": "(\\d{2})-(\\d{2})-(\\d{4})",
+      "replacement": "\\g<3>-\\g<2>-\\g<1>",
+      "input": "Photo 19-10-2026",
+      "output": "Photo 2026-10-19"
+    }
+  ],
+  "request_fields": {
+    "paths": "nonempty array of absolute local paths",
+    "contents": "bool; expand selected folders",
+    "recursive": "bool; include subfolders when contents=true",
+    "hidden": "bool; default false",
+    "kind": "Both | Files | Folders",
+    "name_filter": "glob, e.g. IMG*",
+    "extensions": "jpg,png",
+    "order": "Name | Path | Modified | Manual",
+    "descending": "bool",
+    "compound_extensions": "bool; default true",
+    "rules": "ordered array of {kind, enabled, target, options}"
+  },
+  "workflow": "preview --request job.json \u2192 inspect plan_id \u2192 apply --plan PLAN_ID; undo --batch BATCH_ID"
+}

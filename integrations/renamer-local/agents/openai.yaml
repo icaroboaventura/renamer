@@ -1,0 +1,6 @@
+interface:
+  display_name: "Renamer local"
+  short_description: "Rename local files with previews, rules and undo"
+  default_prompt: "Use $renamer-local to rename my selected files with a preview and the requested naming rules."
+policy:
+  allow_implicit_invocation: true

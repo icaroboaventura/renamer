@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "compound_extensions": true,
+  "rules": [
+    {
+      "enabled": true,
+      "target": "Name",
+      "kind": "Remove",
+      "options": {
+        "mode": "Accents"
+      }
+    },
+    {
+      "enabled": true,
+      "target": "Name",
+      "kind": "Word format",
+      "options": {
+        "mode": "snake_case"
+      }
+    }
+  ]
+}
