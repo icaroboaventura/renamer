@@ -14,12 +14,89 @@ use std::{
 enum Event {
     Refreshed(Result<Vec<Item>>),
     Items(Result<(Vec<Item>, Vec<Item>)>),
-    Preview(Result<Vec<Entry>>),
+    Preview(u64, Result<Vec<Entry>>),
+    SaveError(String),
     Done(Result<Vec<String>>),
     Regex(Result<Value>),
     Progress(usize, usize),
 }
+#[derive(Default)]
+struct PreviewState {
+    generation: u64,
+    running: bool,
+    cancel: Arc<AtomicBool>,
+}
+impl PreviewState {
+    fn invalidate(&mut self) {
+        self.generation += 1;
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+    fn start(&mut self) -> (u64, Arc<AtomicBool>) {
+        self.running = true;
+        self.cancel = Arc::new(AtomicBool::new(false));
+        (self.generation, self.cancel.clone())
+    }
+    fn finish(&mut self, generation: u64) -> bool {
+        self.running = false;
+        generation == self.generation
+    }
+}
+fn current_preset(request: &Request) -> Value {
+    json!({"version":1,"compound_extensions":request.compound_extensions,"rules":request.rules})
+}
+fn restore_preset(path: &std::path::Path, request: &mut Request) -> Result<()> {
+    let value: Value = serde_json::from_reader(std::fs::File::open(path)?)?;
+    anyhow::ensure!(value["version"] == 1, "Unsupported current preset version");
+    let rules: Vec<Rule> = serde_json::from_value(value["rules"].clone())?;
+    let compound = value["compound_extensions"]
+        .as_bool()
+        .ok_or_else(|| anyhow::anyhow!("Invalid compound extensions setting"))?;
+    request.rules = rules;
+    request.compound_extensions = compound;
+    Ok(())
+}
+struct PresetWriter {
+    tx: Option<mpsc::Sender<Value>>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+impl PresetWriter {
+    fn new(path: std::path::PathBuf, events: mpsc::Sender<Event>) -> Self {
+        let (tx, rx) = mpsc::channel::<Value>();
+        let worker = std::thread::spawn(move || {
+            while let Ok(mut value) = rx.recv() {
+                for latest in rx.try_iter() {
+                    value = latest;
+                }
+                if let Err(error) = save_json(&path, &value) {
+                    let _ = events.send(Event::SaveError(format!(
+                        "Could not save current rules: {error}"
+                    )));
+                }
+            }
+        });
+        Self {
+            tx: Some(tx),
+            worker: Some(worker),
+        }
+    }
+    fn save(&self, value: Value) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(value);
+        }
+    }
+}
+impl Drop for PresetWriter {
+    fn drop(&mut self) {
+        self.tx.take();
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
 pub struct App {
+    preview_state: PreviewState,
+    preset_writer: PresetWriter,
+    saved_preset: Value,
     engine: Engine,
     request: Request,
     items: Vec<Item>,
@@ -63,12 +140,26 @@ pub fn launch(engine: Engine, request: Option<Request>) -> Result<()> {
         options,
         Box::new(move |_| {
             let (tx, rx) = mpsc::channel();
+            let preset_path = engine.root.join("current-preset.json");
+            let explicit_request = request.is_some();
+            let mut request = request.unwrap_or_else(|| Request {
+                contents: true,
+                rules: vec![Rule::new("Word format")],
+                ..Default::default()
+            });
+            let mut load_error = None;
+            if !explicit_request
+                && preset_path.exists()
+                && let Err(error) = restore_preset(&preset_path, &mut request)
+            {
+                load_error = Some(format!("Could not restore current rules: {error}"));
+            }
             let mut app = App {
+                preview_state: PreviewState::default(),
+                preset_writer: PresetWriter::new(preset_path, tx.clone()),
+                saved_preset: current_preset(&request),
                 engine,
-                request: request.unwrap_or_else(|| Request {
-                    contents: true,
-                    ..Default::default()
-                }),
+                request,
                 items: vec![],
                 excluded: HashSet::new(),
                 folder_roots: vec![],
@@ -92,8 +183,10 @@ pub fn launch(engine: Engine, request: Option<Request>) -> Result<()> {
                 regex_result: None,
                 example: 0,
             };
-            if app.request.rules.is_empty() {
-                app.request.rules.push(Rule::new("Word format"));
+            if let Some(error) = load_error {
+                app.message = error;
+            } else {
+                app.preset_writer.save(app.saved_preset.clone());
             }
             if !app.request.paths.is_empty() {
                 app.scan();
@@ -105,10 +198,12 @@ pub fn launch(engine: Engine, request: Option<Request>) -> Result<()> {
 }
 impl App {
     fn changed(&mut self) {
+        self.preview_state.invalidate();
         self.dirty = Some(Instant::now());
         self.entries.clear();
     }
     fn begin(&mut self) {
+        self.preview_state.invalidate();
         self.busy = true;
         self.cancel = Arc::new(AtomicBool::new(false));
     }
@@ -155,7 +250,7 @@ impl App {
         });
     }
     fn preview(&mut self) {
-        self.begin();
+        let (generation, c) = self.preview_state.start();
         self.dirty = None;
         let items = self
             .items
@@ -166,11 +261,11 @@ impl App {
         let rules = self.request.rules.clone();
         let compound = self.request.compound_extensions;
         let tx = self.tx.clone();
-        let c = self.cancel.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(Event::Preview(protocol::preview(
-                items, rules, compound, &c,
-            )));
+            let _ = tx.send(Event::Preview(
+                generation,
+                protocol::preview(items, rules, compound, &c),
+            ));
         });
     }
     fn execute(&mut self, undo: bool) {
@@ -496,8 +591,11 @@ impl eframe::App for App {
                         Err(e) => self.message = format!("{e:#}"),
                     }
                 }
-                Event::Preview(r) => {
-                    self.busy = false;
+                Event::SaveError(error) => self.message = error,
+                Event::Preview(generation, r) => {
+                    if !self.preview_state.finish(generation) {
+                        continue;
+                    }
                     match r {
                         Ok(entries) => {
                             self.message = format!("{} items ready for review", entries.len());
@@ -568,6 +666,7 @@ impl eframe::App for App {
                 "Wait for completion or cancel and allow rollback before closing.".into();
         }
         if !self.busy
+            && !self.preview_state.running
             && self
                 .dirty
                 .is_some_and(|t| t.elapsed() > Duration::from_millis(300))
@@ -655,7 +754,11 @@ impl eframe::App for App {
                     .count();
                 if ui
                     .add_enabled(
-                        !self.busy && self.dirty.is_none() && errors == 0 && changed > 0,
+                        !self.busy
+                            && !self.preview_state.running
+                            && self.dirty.is_none()
+                            && errors == 0
+                            && changed > 0,
                         egui::Button::new(format!("Rename {changed} items")),
                     )
                     .clicked()
@@ -813,10 +916,102 @@ impl eframe::App for App {
                 }
             });
         });
-        if self.busy || self.dirty.is_some() {
+        let preset = current_preset(&self.request);
+        if preset != self.saved_preset {
+            self.preset_writer.save(preset.clone());
+            self.saved_preset = preset;
+        }
+        if self.busy || self.preview_state.running || self.dirty.is_some() {
             ctx.request_repaint_after(Duration::from_millis(50));
         } else {
             ctx.request_repaint_after(Duration::from_millis(250));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn editing_cancels_preview_and_rejects_stale_results() {
+        let mut preview = PreviewState::default();
+        let (first, cancel) = preview.start();
+        preview.invalidate();
+        assert!(cancel.load(Ordering::Relaxed));
+        assert!(preview.running); // Wait for cancellation before starting another worker.
+        assert!(!preview.finish(first));
+        let (latest, cancel) = preview.start();
+        assert!(!cancel.load(Ordering::Relaxed));
+        assert!(preview.finish(latest));
+    }
+
+    #[test]
+    fn current_rules_survive_batch_and_restart() {
+        let temp = tempfile::tempdir().unwrap();
+        let engine = Engine::new(Some(temp.path().join("state"))).unwrap();
+        let source = temp.path().join("HELLO.txt");
+        std::fs::write(&source, "sample").unwrap();
+        let request = Request {
+            rules: vec![Rule {
+                kind: "Case".into(),
+                enabled: true,
+                target: "Name".into(),
+                options: json!({"mode":"lowercase"}),
+            }],
+            compound_extensions: false,
+            ..Default::default()
+        };
+        let path = engine.root.join("current-preset.json");
+        let (tx, _rx) = mpsc::channel();
+        let writer = PresetWriter::new(path.clone(), tx);
+        writer.save(current_preset(&request));
+        drop(writer); // Closing the app flushes pending writes.
+        let mut plan = build_plan(
+            vec![Item::read(&source).unwrap()],
+            request.rules.clone(),
+            false,
+        )
+        .unwrap();
+        engine
+            .execute(
+                &mut plan,
+                "remember-rules",
+                &AtomicBool::new(false),
+                |_, _| {},
+            )
+            .unwrap();
+        assert!(temp.path().join("hello.txt").exists());
+        let mut restored = Request::default();
+        restore_preset(&path, &mut restored).unwrap();
+        assert_eq!(current_preset(&restored), current_preset(&request));
+        assert!(restored.paths.is_empty());
+        // Empty rule lists are intentional and must not be replaced by defaults.
+        restored.rules.clear();
+        save_json(&path, &current_preset(&restored)).unwrap();
+        restore_preset(&path, &mut restored).unwrap();
+        assert!(restored.rules.is_empty());
+    }
+
+    #[test]
+    fn writer_keeps_latest_edit_and_preserves_incomplete_regex() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("current-preset.json");
+        let (tx, _rx) = mpsc::channel();
+        let writer = PresetWriter::new(path.clone(), tx);
+        let mut request = Request::default();
+        for pattern in ["a", "ab", "["] {
+            request.rules = vec![Rule {
+                kind: "Regular expression".into(),
+                enabled: true,
+                target: "Name".into(),
+                options: json!({"pattern":pattern,"replacement":""}),
+            }];
+            writer.save(current_preset(&request));
+        }
+        drop(writer);
+        let mut restored = Request::default();
+        restore_preset(&path, &mut restored).unwrap();
+        assert_eq!(current_preset(&restored), current_preset(&request));
     }
 }

@@ -21,6 +21,7 @@ Holiday Photo.jpg         → 001_holiday_photo.jpg
 - **Format words:** camelCase, PascalCase, snake_case, SCREAMING_SNAKE_CASE, kebab-case, Train-Case, separated words, and joined words. Split camel case and acronyms, with optional letter/number boundaries.
 - **Clean names:** replace literal text or regex matches; remove text, characters by position, digits, punctuation, or accents; trim, collapse, remove, or replace whitespace.
 - **Add text and numbering:** prefixes, suffixes, insertion at a position, whole-name replacement, and configurable numbering with per-folder sequences.
+- **Remember your rules:** the active rules and extension setting save automatically and return when you reopen the app. Rename a batch or clear the file list, then add another folder to reuse the same setup. Inputs remain editable while previews update in the background.
 - **Combine rules:** reorder, duplicate, or disable rules; import/export JSON presets; start from the included presets.
 - **Control scope:** select files, folders, or both; filter by extension or name; preserve extensions, including compound extensions such as `.tar.gz`.
 - **Review before changing files:** live preview, conflict detection, natural sorting, manual ordering, and a checkbox for each item.
