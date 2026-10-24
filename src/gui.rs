@@ -688,7 +688,6 @@ impl eframe::App for App {
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.add_enabled_ui(!self.busy, |ui| {
                 ui.horizontal(|ui| {
-                    ui.heading("Renamer");
                     if ui.button("Add files…").clicked()
                         && let Some(paths) = rfd::FileDialog::new().pick_files()
                     {
