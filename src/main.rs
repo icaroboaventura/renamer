@@ -139,6 +139,9 @@ fn run() -> Result<()> {
     Ok(())
 }
 fn main() {
+    // Force X11/XWayland backend for reliable egui display on Wayland compositors.
+    unsafe { std::env::remove_var("WAYLAND_DISPLAY") };
+
     if let Err(error) = run() {
         println!(
             "{}",
