@@ -689,7 +689,6 @@ impl eframe::App for App {
             ui.add_enabled_ui(!self.busy, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Renamer");
-                    ui.label("Rust 2.0");
                     if ui.button("Add files…").clicked()
                         && let Some(paths) = rfd::FileDialog::new().pick_files()
                     {
